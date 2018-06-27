@@ -46,20 +46,12 @@ void setup() {
   ledOut(OP_INTENSITY, 0x1); // Max brightness
   ledOut(OP_SHUTDOWN, 1); // Turn on!; 
 }
-/*
-int ADC_read(bool s0, bool s1, bool s2) {
-  digitalWrite(MUX_S0, s0);
-  digitalWrite(MUX_S1, s1);
-  digitalWrite(MUX_S2, s2);
-  //delay(10); // TODO verify this delay
-  return analogRead(ADC_PIN);
-}
-*/
 
 int ADC_read(byte address) {
   digitalWrite(MUX_S0, address & 0b00000001);
   digitalWrite(MUX_S0, address & 0b00000010);
   digitalWrite(MUX_S0, address & 0b00000100);
+  delay(10);
   return analogRead(ADC_PIN);
 }
 
@@ -94,6 +86,7 @@ int get_display_ADC_reading() {
     return max(max_difference, abs(gridVoltages[3] - testVoltages[3]));
   }
 }
+
 void reading_to_buffer(int adc_reading, byte reading_buffer[4]) {
   char i = 3;
   // Scale the voltage reading according to on-board resistors TODO
@@ -108,40 +101,24 @@ void reading_to_buffer(int adc_reading, byte reading_buffer[4]) {
 }
 
 void display_max7219(byte reading_buffer[4]) {
-  //
-  byte bi = 1;
-  byte di = 3;
+  byte bi = 0;
+  byte di = 2;
   byte number = 0;
   if (reading_buffer[0]) {
-    bi = 2;
+    bi = 1;
   }
 
   do {
-    
     number = charTable[reading_buffer[di+bi]];
     if (bi==di) {
       number |= ENABLE_DP;
     }
-    //setDigit(di, number, bi==di);
-    ledOut(di, number);
+    ledOut(di+1, number);
     --di;
   }
-  while (di != 1);
-  
-
-  //ledOut(1, charTable[number]);
-  //setDigit(0, number, false);
-  //setDigit(1, buffer[1], false);
-  //setDigit(2, buffer[2], false);
+  while (di != 0);
 }
 
-static void setDigit(byte digit, byte number, boolean dp) {
-  byte value = charTable[number];
-  if (dp) {
-    value |= ENABLE_DP;
-  }
-  ledOut(digit+1, value);
-}
 static void ledOut(byte address, byte value) {
   digitalWrite(LED_LATCH, LOW);
   shiftOut(LED_SERIAL, LED_CLOCK, MSBFIRST, address);
@@ -150,19 +127,8 @@ static void ledOut(byte address, byte value) {
 }
 
 void loop() {
-  int ADC_reading = get_display_ADC_reading(); // 288 bytes
-  //int ADC_reading = analogRead(ADC_PIN);
-
+  int ADC_reading = get_display_ADC_reading();
   byte reading_buffer[4] = {0,0,0,0};
-  reading_to_buffer(ADC_reading, reading_buffer); // 758 bytes
-  //byte reading_buffer[4] = {(byte) ADC_reading,0,0,0};
-  /*
-  if (reading_buffer[1] > 2) {
-    digitalWrite(LED_LATCH, HIGH);
-  } else {
-    digitalWrite(LED_LATCH, LOW);
-  }*/
-  display_max7219(reading_buffer); // 80 bytes
-  //setDigit(0, reading_buffer[0], false);
-  //delay(500);
+  reading_to_buffer(ADC_reading, reading_buffer); 
+  display_max7219(reading_buffer); 
 }
