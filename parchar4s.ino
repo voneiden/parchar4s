@@ -21,6 +21,17 @@
 #define OP_SHUTDOWN 12
 #define OP_DISPLAY_TEST 15
 
+#define MUX_GRID_1 0b00000011
+#define MUX_GRID_2 0b00000000
+#define MUX_GRID_3 0b00000001
+#define MUX_GRID_4 0b00000010
+
+
+#define MUX_TEST_1 0b00000101
+#define MUX_TEST_2 0b00000111 // TODO!
+#define MUX_TEST_3 0b00000110
+#define MUX_TEST_4 0b00000111 // TODO!
+
 const static byte charTable[] = {0b01111110,0b00110000,0b01101101,0b01111001,0b00110011,0b01011011,0b01011111,0b01110000,0b01111111,0b01111011};
 
 void setup() {
@@ -30,26 +41,12 @@ void setup() {
   pinMode(1, OUTPUT);
   pinMode(2, OUTPUT);
   pinMode(LED_LATCH, OUTPUT);
-  digitalWrite(LED_LATCH, HIGH);
-  // Setup the MAX7219
-  ledOut(OP_DISPLAY_TEST, 0);
-  // Use 3 digits
-  ledOut(OP_SCANLIMIT, 3);
-
-  // Max brightness
-  ledOut(OP_INTENSITY, 0x1);
-
-  // Startup values
-  setDigit(0, 6, false);
-  setDigit(1, 6, false);
-  setDigit(2, 6, false);
-  
-  // Turn on!
-  ledOut(OP_SHUTDOWN, 1);
-
-  
-  
+  //ledOut(OP_DISPLAY_TEST, 0);
+  ledOut(OP_SCANLIMIT, 3); // Use 3 digits
+  ledOut(OP_INTENSITY, 0x1); // Max brightness
+  ledOut(OP_SHUTDOWN, 1); // Turn on!; 
 }
+/*
 int ADC_read(bool s0, bool s1, bool s2) {
   digitalWrite(MUX_S0, s0);
   digitalWrite(MUX_S1, s1);
@@ -57,24 +54,33 @@ int ADC_read(bool s0, bool s1, bool s2) {
   //delay(10); // TODO verify this delay
   return analogRead(ADC_PIN);
 }
+*/
+
+int ADC_read(byte address) {
+  digitalWrite(MUX_S0, address & 0b00000001);
+  digitalWrite(MUX_S0, address & 0b00000010);
+  digitalWrite(MUX_S0, address & 0b00000100);
+  return analogRead(ADC_PIN);
+}
 
 int get_display_ADC_reading() {
   // Check voltage on grid
   // A3, A0, A1, A2
   int gridVoltages[4];
-  gridVoltages[0] = ADC_read(0, 1, 1);
-  gridVoltages[1] = ADC_read(0, 0, 0) - gridVoltages[0];
-  gridVoltages[2] = ADC_read(0, 0, 1) - gridVoltages[1] - gridVoltages[0];
-  gridVoltages[3] = ADC_read(0, 1, 0) - gridVoltages[2] - gridVoltages[1] - gridVoltages[0];
+  gridVoltages[0] = ADC_read(MUX_GRID_1);
+  gridVoltages[1] = ADC_read(MUX_GRID_2) - gridVoltages[0];
+  gridVoltages[2] = ADC_read(MUX_GRID_3) - gridVoltages[1] - gridVoltages[0];
+  gridVoltages[3] = ADC_read(MUX_GRID_4) - gridVoltages[2] - gridVoltages[1] - gridVoltages[0];
   
   // Check voltage on test pins
   // A5, A7, A6, A4
   int testVoltages[4];
-  testVoltages[0] = ADC_read(1, 0, 1);
-  testVoltages[1] = ADC_read(1, 1, 1) - testVoltages[0];
-  testVoltages[2] = ADC_read(1, 1, 0) - testVoltages[1] - testVoltages[0];
-  testVoltages[3] = ADC_read(1, 1, 1) - testVoltages[2] - testVoltages[1] - testVoltages[0];
+  testVoltages[0] = ADC_read(MUX_TEST_1);
+  testVoltages[1] = ADC_read(MUX_TEST_2) - testVoltages[0];
+  testVoltages[2] = ADC_read(MUX_TEST_3) - testVoltages[1] - testVoltages[0];
+  testVoltages[3] = ADC_read(MUX_TEST_4) - testVoltages[2] - testVoltages[1] - testVoltages[0];
 
+  
   // Nothing attached
   if (testVoltages[0] < 10 ||
       testVoltages[1] < 10 ||
@@ -91,7 +97,7 @@ int get_display_ADC_reading() {
 void reading_to_buffer(int adc_reading, byte reading_buffer[4]) {
   char i = 3;
   // Scale the voltage reading according to on-board resistors TODO
-  int voltage_reading = adc_reading * 17 / 10.24;
+  int voltage_reading = adc_reading * 1700 / 1024;
   while (i >= 0) {
     byte digit = voltage_reading % 10;
     //buffer[i] = '0' + digit;
@@ -103,34 +109,40 @@ void reading_to_buffer(int adc_reading, byte reading_buffer[4]) {
 
 void display_max7219(byte reading_buffer[4]) {
   //
-  byte bi = 0;
-  //byte di = 2;
-  //byte number = 0;
+  byte bi = 1;
+  byte di = 3;
+  byte number = 0;
   if (reading_buffer[0]) {
-    bi = 1;
+    bi = 2;
   }
 
-  /*
-  while (di != 255) {
-    number = reading_buffer[di+bi];
-    setDigit(di, number, bi==di);
-    di--;
+  do {
+    
+    number = charTable[reading_buffer[di+bi]];
+    if (bi==di) {
+      number |= ENABLE_DP;
+    }
+    //setDigit(di, number, bi==di);
+    ledOut(di, number);
+    --di;
   }
-  */
-  byte number = reading_buffer[bi];
-  setDigit(0, number, false);
+  while (di != 1);
+  
+
+  //ledOut(1, charTable[number]);
+  //setDigit(0, number, false);
   //setDigit(1, buffer[1], false);
   //setDigit(2, buffer[2], false);
 }
 
-void setDigit(byte digit, byte number, boolean dp) {
+static void setDigit(byte digit, byte number, boolean dp) {
   byte value = charTable[number];
   if (dp) {
     value |= ENABLE_DP;
   }
   ledOut(digit+1, value);
 }
-void ledOut(byte address, byte value) {
+static void ledOut(byte address, byte value) {
   digitalWrite(LED_LATCH, LOW);
   shiftOut(LED_SERIAL, LED_CLOCK, MSBFIRST, address);
   shiftOut(LED_SERIAL, LED_CLOCK, MSBFIRST, value);
@@ -138,9 +150,19 @@ void ledOut(byte address, byte value) {
 }
 
 void loop() {
-  int ADC_reading = get_display_ADC_reading();
+  int ADC_reading = get_display_ADC_reading(); // 288 bytes
+  //int ADC_reading = analogRead(ADC_PIN);
+
   byte reading_buffer[4] = {0,0,0,0};
-  reading_to_buffer(ADC_reading, reading_buffer);
-  display_max7219(reading_buffer);
+  reading_to_buffer(ADC_reading, reading_buffer); // 758 bytes
+  //byte reading_buffer[4] = {(byte) ADC_reading,0,0,0};
+  /*
+  if (reading_buffer[1] > 2) {
+    digitalWrite(LED_LATCH, HIGH);
+  } else {
+    digitalWrite(LED_LATCH, LOW);
+  }*/
+  display_max7219(reading_buffer); // 80 bytes
+  //setDigit(0, reading_buffer[0], false);
   //delay(500);
 }
